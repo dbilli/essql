@@ -52,11 +52,11 @@ class ASTBoolLiteral(AST):
 
 class ASTIdentifier(AST):
 
-    def __init__(self, s):
-        self.s = s
+    def __init__(self, symbol):
+        self.symbol = symbol
         
     def toString(self):
-        return 'Identifier(%s)' % (self.s)
+        return 'Identifier(%s)' % (self.symbol)
 
 #----------------------------------------------------------------------#
 #                                                                      #
@@ -228,7 +228,7 @@ class ASTHaving(AST):
 class ASTExpr(AST):
     pass
 
-class ASTUnaryExpr(AST):
+class ASTUnaryExpr(ASTExpr):
 
     def __init__(self, op, expr):
         self.op = op
@@ -237,7 +237,7 @@ class ASTUnaryExpr(AST):
     def toString(self):
             return '(%s %s)' % (self.op , self.expr.toString())
 
-class ASTBinaryExpr(AST):
+class ASTBinaryExpr(ASTExpr):
 
     def __init__(self, op, expr1, expr2):
         self.op = op
@@ -247,7 +247,7 @@ class ASTBinaryExpr(AST):
     def toString(self):
             return '(%s %s %s)' % ( self.expr1.toString() ,  self.op , self.expr2.toString())
 
-class ASTTernaryExpr(AST):
+class ASTTernaryExpr(ASTExpr):
 
     def __init__(self, op, expr1, expr2, expr3):
         self.op = op
@@ -271,8 +271,8 @@ class Parser(object):
         return self._parser.parseString(s)[0]
     
     
-    def createIdentifier(self, s):
-        return ASTIdentifier(s)
+    def createIdentifier(self, symbol):
+        return ASTIdentifier(symbol)
 
     def createBoolLiteral(self, b):
         return ASTBoolLiteral(b)
@@ -318,6 +318,9 @@ class Parser(object):
     
     def createASTSelect(self, col_exprs):
         return ASTSelect(col_exprs)
+    
+    def createASTSelectColumn(self, expr, alias):
+        return ASTSelectColumn(expr, alias)
     
     def createASTFrom(self, tables):
         return ASTFrom( tables )
@@ -473,7 +476,7 @@ class Parser(object):
         
         quoted_identifier = QuotedString('"', escQuote='""')
         
-        identifier = (~any_keyword + Word(alphas, alphanums + "_"))     .setParseAction( pyparsing_common.downcaseTokens) | quoted_identifier
+        identifier = (~any_keyword + Word(alphas + '@', alphanums + "_"))     .setParseAction( pyparsing_common.downcaseTokens) | quoted_identifier
         
         #collation_name = identifier.copy()
 
@@ -719,7 +722,7 @@ class Parser(object):
         def _op_col_alias_callback(s, loc, toks):
             expr   = toks.get('expr')
             alias  = toks.get('alias')           
-            return ASTSelectColumn(expr, alias) 
+            return self.createASTSelectColumn(expr, alias) 
         
         # result_column = "*" | table_name + "." + "*" | Group(expr + Optional(Optional(AS) + column_alias))
         result_column = (
@@ -749,9 +752,14 @@ class Parser(object):
         #
         def _op_from_callback(s, loc, toks):
             tables = list(toks.get("from")) 
+            print(__file__, tables)
             return self.createASTFrom( tables )
         
-        from_stmt  = (FROM + join_source("from*"))                      .setParseAction( _op_from_callback ) 
+        
+        
+        #from_stmt  = (FROM + join_source("from*"))                      .setParseAction( _op_from_callback ) 
+        
+        from_stmt = (FROM + delimitedList(join_source, delim=',')("from"))          .setParseAction( _op_from_callback ) 
     
         #
         # TOP
@@ -899,8 +907,6 @@ if __name__ == "__main__":
     parser = Parser()
 
     r = parser.parse(s)
-    
-    print repr(r)
     
     print("-" * 80)
     print(r)
