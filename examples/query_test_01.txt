@@ -1,0 +1,16 @@
+
+SELECT 
+       x       AS Xz, 
+       fun1(z) AS Z, 
+       int(log.level.descr)     AS log1 
+  FROM 
+       "test-index" 
+ WHERE 
+       QUERYSTRING `  x:>1000  AND  log.level.descr:3  `
+
+ORDER BY 
+       z desc,
+       x desc 
+
+LIMIT 10000
+ 

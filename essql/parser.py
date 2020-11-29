@@ -1,7 +1,11 @@
 
-from pyparsing import *
+from abc import abstractmethod
 
-ParserElement.enablePackrat()
+#from pyparsing import *
+import pyparsing as pp
+
+# Required for parsing
+pp.ParserElement.enablePackrat()
 
 #----------------------------------------------------------------------#
 #                                                                      #
@@ -12,14 +16,12 @@ class AST(object):
     def __init__(self):
         return
 
-    #def __repr__(self):
-    #    return self.toString()
-
     def __str__(self):
         return self.toString()
-        
+   
+    @abstractmethod
     def toString(self):
-        raise NotImplementedError
+        pass
 
 #----------------------------------------------------------------------#
 # Literals                                                             #
@@ -27,42 +29,75 @@ class AST(object):
 
 class ASTNumericLiteral(AST):
 
-    def __init__(self, n):
-        self.n = n
+    def __init__(self, value):
+        self.value = value
 
     def toString(self):
-        return 'Number(%s)' % (self.n)
+        return 'Number(%s)' % (self.value)
        
 
 class ASTStringLiteral(AST):
 
-    def __init__(self, s):
-        self.s = s
+    def __init__(self, value):
+        self.value = value
         
     def toString(self):
-        return 'String(%s)' % (self.s)
+        return 'String(%s)' % (self.value)
 
 class ASTBoolLiteral(AST):
 
-    def __init__(self, b):
-        self.b = b
+    def __init__(self, value):
+        self.value = value
         
     def toString(self):
-        return 'Bool(%s)' % (self.b)
+        return 'Bool(%s)' % (self.value)
 
 class ASTIdentifier(AST):
 
-    def __init__(self, symbol):
-        self.symbol = symbol
+    def __init__(self, value):
+        self.value = value
         
     def toString(self):
-        return 'Identifier(%s)' % (self.symbol)
+        return 'Identifier(%s)' % (self.value)
 
 #----------------------------------------------------------------------#
-#                                                                      #
+# Expressions                                                          #
 #----------------------------------------------------------------------#
 
-class ASTCall(AST):
+class ASTExpr(AST):
+    pass
+
+class ASTUnaryExpr(ASTExpr):
+
+    def __init__(self, op, expr):
+        self.op = op
+        self.expr1 = expr
+        
+    def toString(self):
+            return '(%s %s)' % (self.op , self.expr1.toString())
+
+class ASTBinaryExpr(ASTExpr):
+
+    def __init__(self, op, expr1, expr2):
+        self.op = op
+        self.expr1 = expr1
+        self.expr2 = expr2
+        
+    def toString(self):
+            return '(%s %s %s)' % ( self.expr1.toString() ,  self.op , self.expr2.toString())
+
+class ASTTernaryExpr(ASTExpr):
+
+    def __init__(self, op, expr1, expr2, expr3):
+        self.op = op
+        self.expr1 = expr1
+        self.expr2 = expr2
+        self.expr3 = expr3
+        
+    def toString(self):
+            return '(%s %s %s %s)' % ( self.op, self.expr1.toString() ,  self.expr2.toString() , self.expr3.toString() )        
+
+class ASTCall(ASTExpr):
 
     def __init__(self, identifier, params):
         self.identifier = identifier
@@ -70,6 +105,14 @@ class ASTCall(AST):
         
     def toString(self):
         return 'CALL(%s, %s)' % (self.identifier.toString(),  ','.join([p.toString() for p in self.params]) )
+
+class ASTQueryString(ASTExpr):
+
+    def __init__(self, query_string):
+        self.query_string = query_string
+        
+    def toString(self):
+        return 'querystring(%s)' % (self.query_string)
 
 #----------------------------------------------------------------------#
 #                                                                      #
@@ -132,17 +175,28 @@ class ASTWhere(AST):
             return 'Where(%s)' % ( self.expr.toString() )
 
 #----------------------------------------------------------------------#
-# LIMIT                                                                #
+# GROUP / HAVING                                                       #
 #----------------------------------------------------------------------#
 
-class ASTLimit(AST):
+class ASTGroup(AST):
+
+    def __init__(self, exprs):
+        self.exprs  = exprs
+        
+    def toString(self):
+            return 'Group(%s)' % ( ','.join([ e.toString() for e in self.exprs ]) )
+
+class ASTHaving(AST):
 
     def __init__(self, expr):
         self.expr  = expr
         
     def toString(self):
-            return 'Limit(%s)' % (self.expr.toString())
+        return 'Having(%s)' % (self.expr.toString())
 
+#----------------------------------------------------------------------#
+# SELECT BODY                                                          #
+#----------------------------------------------------------------------#
 
 class ASTSelectBody(AST):
 
@@ -161,24 +215,6 @@ class ASTSelectBody(AST):
             if self.group   : s += '\n' + self.group  .toString()
             if self.having  : s += '\n' + self.having .toString()
             return s
-
-class ASTQuery(AST):
-
-    def __init__(self, s, o, l):
-        self.s   = s   
-        self.o   = o     
-        self.l   = l   
-        
-    def toString(self):
-            s = ''
-            s += self.s.toString()
-            if self.o     : s += '\n' + self.o  .toString()
-            if self.l     : s += '\n' + self.l  .toString()
-            return s
-
-
-
-
 
 #----------------------------------------------------------------------#
 # ORDER                                                                #
@@ -202,61 +238,34 @@ class ASTOrderTerm(AST):
         return '(%s %s)' % (self.expr.toString(), self.dir)
 
 #----------------------------------------------------------------------#
-# GROUP / HAVING                                                       #
+# LIMIT                                                                #
 #----------------------------------------------------------------------#
 
-class ASTGroup(AST):
-
-    def __init__(self, exprs):
-        self.exprs  = exprs
-        
-    def toString(self):
-            return 'Group(%s)' % ( ','.join([ e.toString() for e in self.exprs ]) )
-
-class ASTHaving(AST):
+class ASTLimit(AST):
 
     def __init__(self, expr):
         self.expr  = expr
         
     def toString(self):
-        return 'Having(%s)' % (self.expr.toString())
+            return 'Limit(%s)' % (self.expr.toString())
 
 #----------------------------------------------------------------------#
-# Expressions                                                          #
+# FULL QUERY                                                           #
 #----------------------------------------------------------------------#
 
-class ASTExpr(AST):
-    pass
+class ASTQuery(AST):
 
-class ASTUnaryExpr(ASTExpr):
-
-    def __init__(self, op, expr):
-        self.op = op
-        self.expr = expr
+    def __init__(self, s, o, l):
+        self.s   = s   
+        self.o   = o     
+        self.l   = l   
         
     def toString(self):
-            return '(%s %s)' % (self.op , self.expr.toString())
-
-class ASTBinaryExpr(ASTExpr):
-
-    def __init__(self, op, expr1, expr2):
-        self.op = op
-        self.expr1 = expr1
-        self.expr2 = expr2
-        
-    def toString(self):
-            return '(%s %s %s)' % ( self.expr1.toString() ,  self.op , self.expr2.toString())
-
-class ASTTernaryExpr(ASTExpr):
-
-    def __init__(self, op, expr1, expr2, expr3):
-        self.op = op
-        self.expr1 = expr1
-        self.expr2 = expr2
-        self.expr3 = expr3
-        
-    def toString(self):
-            return '(%s %s %s %s)' % ( self.op, self.expr1.toString() ,  self.expr2.toString() , self.expr3.toString() )        
+            s = ''
+            s += self.s.toString()
+            if self.o     : s += '\n' + self.o  .toString()
+            if self.l     : s += '\n' + self.l  .toString()
+            return s
             
 #----------------------------------------------------------------------#
 #                                                                      #
@@ -270,10 +279,12 @@ class Parser(object):
     def parse(self, s):
         return self._parser.parseString(s)[0]
     
-    
-    def createIdentifier(self, symbol):
-        return ASTIdentifier(symbol)
+    #
+    # Factory methods
+    #
 
+    # LITERALS
+    
     def createBoolLiteral(self, b):
         return ASTBoolLiteral(b)
     
@@ -283,23 +294,56 @@ class Parser(object):
     def createNumericLiteral(self, s):
         return ASTNumericLiteral(s)
 
-    def createCall(self, name, params):
-        return ASTCall(name, params)
+    def createIdentifier(self, symbol):
+        return ASTIdentifier(symbol)
+
+    # EXPRESSIONS
+
+    def createASTUnaryExpr(self, op, e1):
+        return ASTUnaryExpr(op, e1)
         
     def createBinaryExpr(self, op, e1, e2):
         return ASTBinaryExpr(op, e1, e2)
+
+    def createASTTernaryExpr(self, op, e1, e2, e3):
+        return ASTTernaryExpr(op, e1, e2, e3)
+    
+    def createCall(self, name, params):
+        return ASTCall(name, params)
+    
+    def createQueryString(self, s):
+        return ASTQueryString(s)
+
+    # SELECT col.....        
+
+    def createASTSelect(self, col_exprs):
+        return ASTSelect(col_exprs)
+
+    def createASTSelectColumn(self, expr, alias):
+        return ASTSelectColumn(expr, alias)
+        
+    # FROM
+    
+    def createASTFrom(self, tables):
+        return ASTFrom( tables )
+
+    def createASTTable(self, table, table_alias):
+        return ASTTable(table, table_alias)
+    
+    # WHERE
+
+    def createASTWhere(self, expr):
+        return ASTWhere(expr)
+    
+    # ORDER
     
     def createOrderTerm(self, expr, direction):
         return ASTOrderTerm(expr, direction)
 
-    def createQuery(self, s, o, l):
-        return ASTQuery(s, o, l)
-        
-    def createSelectBody(self, s,f, w, g, h):
-        return ASTSelectBody(s,f, w, g, h)
-    
     def createASTOrder(self, expr_list):
         return ASTOrder(expr_list)
+
+    # GROUP HAVING
     
     def createASTGroup(self, expr_list):
         return ASTGroup(expr_list)
@@ -307,81 +351,71 @@ class Parser(object):
     def createASTHaving(self, expr ):
         return ASTHaving( expr )
     
+    # LIMIT
+    
     def createASTLimit(self, expr):
         return ASTLimit( expr )
 
-    def createASTWhere(self, expr):
-        return ASTWhere(expr)
+    # FULL QUERY
 
-    def createASTTable(self, table, table_alias):
-        return ASTTable(table, table_alias)
-    
-    def createASTSelect(self, col_exprs):
-        return ASTSelect(col_exprs)
-    
-    def createASTSelectColumn(self, expr, alias):
-        return ASTSelectColumn(expr, alias)
-    
-    def createASTFrom(self, tables):
-        return ASTFrom( tables )
-
-    def createASTTernaryExpr(self, op, e1, e2, e3):
-        return ASTTernaryExpr(op, e1, e2, e3)
+    def createQuery(self, s, o, l):
+        return ASTQuery(s, o, l)
         
-    def createASTUnaryExpr(self, op, e1):
-        return ASTUnaryExpr(op, e1)
-
+    def createSelectBody(self, s, f, w, g, h):
+        return ASTSelectBody(s,f, w, g, h)
+    
+    
     #
-    #
+    # SQL Parser taken from pyparsing/examples/select_parser.py 
     #
     def create_parser(self):
         
-        LPAR, RPAR, COMMA = map(Suppress, "(),")
+        LPAR, RPAR, COMMA = map(pp.Suppress, "(),")
         
-        DOT, STAR = map(Literal, ".*")
+        DOT, STAR = map(pp.Literal, ".*")
         
         #select_stmt = Forward().setName("select statement")
         
     
         #UNION             = CaselessKeyword('UNION')
         #ALL               = CaselessKeyword('ALL') 
-        AND               = CaselessKeyword('AND') 
+        AND               = pp.CaselessKeyword('AND') 
         #INTERSECT         = CaselessKeyword('INTERSECT') 
         #EXCEPT            = CaselessKeyword('EXCEPT') 
         #COLLATE           = CaselessKeyword('COLLATE') 
-        ASC               = CaselessKeyword('ASC') 
-        DESC              = CaselessKeyword('DESC') 
+        ASC               = pp.CaselessKeyword('ASC') 
+        DESC              = pp.CaselessKeyword('DESC') 
         #ON                = CaselessKeyword('ON') 
         #USING             = CaselessKeyword('USING') 
-        NATURAL           = CaselessKeyword('NATURAL') 
+        NATURAL           = pp.CaselessKeyword('NATURAL') 
         #INNER             = CaselessKeyword('INNER') 
         #CROSS             = CaselessKeyword('CROSS') 
         #LEFT              = CaselessKeyword('LEFT') 
         #OUTER             = CaselessKeyword('OUTER') 
         #JOIN              = CaselessKeyword('JOIN') 
-        AS                = CaselessKeyword('AS').suppress() 
+        AS                = pp.CaselessKeyword('AS').suppress() 
         #INDEXED           = CaselessKeyword('INDEXED') 
-        NOT               = CaselessKeyword('NOT')
-        SELECT            = CaselessKeyword('SELECT').suppress() 
-        TOP               = CaselessKeyword('TOP').suppress()
+        NOT               = pp.CaselessKeyword('NOT')
+        SELECT            = pp.CaselessKeyword('SELECT').suppress() 
+        TOP               = pp.CaselessKeyword('TOP').suppress()
         #DISTINCT          = CaselessKeyword('DISTINCT') 
-        FROM              = CaselessKeyword('FROM').suppress() 
-        WHERE             = CaselessKeyword('WHERE').suppress()
-        GROUP             = CaselessKeyword('GROUP') 
-        BY                = CaselessKeyword('BY').suppress()  
-        HAVING            = CaselessKeyword('HAVING') 
-        ORDER             = CaselessKeyword('ORDER').suppress() 
-        LIMIT             = CaselessKeyword('LIMIT').suppress()
+        FROM              = pp.CaselessKeyword('FROM').suppress() 
+        WHERE             = pp.CaselessKeyword('WHERE').suppress()
+        GROUP             = pp.CaselessKeyword('GROUP') 
+        BY                = pp.CaselessKeyword('BY').suppress()  
+        HAVING            = pp.CaselessKeyword('HAVING') 
+        ORDER             = pp.CaselessKeyword('ORDER').suppress() 
+        LIMIT             = pp.CaselessKeyword('LIMIT').suppress()
         #OFFSET            = CaselessKeyword('OFFSET') 
-        OR                = CaselessKeyword('OR') 
+        OR                = pp.CaselessKeyword('OR') 
         #CAST              = CaselessKeyword('CAST') 
-        ISNULL            = CaselessKeyword('ISNULL') 
-        NOTNULL           = CaselessKeyword('NOTNULL') 
+        ISNULL            = pp.CaselessKeyword('ISNULL') 
+        NOTNULL           = pp.CaselessKeyword('NOTNULL') 
         
-        NULL              = CaselessKeyword('NULL') 
+        NULL              = pp.CaselessKeyword('NULL') 
         
-        IS                = CaselessKeyword('IS') 
-        BETWEEN           = CaselessKeyword('BETWEEN') 
+        IS                = pp.CaselessKeyword('IS') 
+        BETWEEN           = pp.CaselessKeyword('BETWEEN') 
         
         #ELSE              = CaselessKeyword('ELSE') 
         #END               = CaselessKeyword('END')
@@ -391,19 +425,21 @@ class Parser(object):
         
         #EXISTS            = CaselessKeyword('EXISTS') 
         
-        IN                = CaselessKeyword('IN') 
-        LIKE              = CaselessKeyword('LIKE') 
-        GLOB              = CaselessKeyword('GLOB') 
-        REGEXP            = CaselessKeyword('REGEXP') 
-        MATCH             = CaselessKeyword('MATCH') 
-        ESCAPE            = CaselessKeyword('ESCAPE') 
+        IN                = pp.CaselessKeyword('IN') 
+        LIKE              = pp.CaselessKeyword('LIKE') 
+        GLOB              = pp.CaselessKeyword('GLOB') 
+        REGEXP            = pp.CaselessKeyword('REGEXP') 
+        MATCH             = pp.CaselessKeyword('MATCH') 
+        ESCAPE            = pp.CaselessKeyword('ESCAPE') 
+        
+        QUERYSTRING        = pp.CaselessKeyword('QUERYSTRING') 
         
         #CURRENT_TIME      = CaselessKeyword('CURRENT_TIME') 
         #CURRENT_DATE      = CaselessKeyword('CURRENT_DATE') 
         #CURRENT_TIMESTAMP = CaselessKeyword('CURRENT_TIMESTAMP') 
         
-        TRUE              = CaselessKeyword('TRUE')                     #.setParseAction( lambda s, loc, toks: True  ) 
-        FALSE             = CaselessKeyword('FALSE')                    #.setParseAction( lambda s, loc, toks: False ) 
+        TRUE              = pp.CaselessKeyword('TRUE')                     #.setParseAction( lambda s, loc, toks: True  ) 
+        FALSE             = pp.CaselessKeyword('FALSE')                    #.setParseAction( lambda s, loc, toks: False ) 
     
         keywords = [
             #UNION             , 
@@ -466,17 +502,20 @@ class Parser(object):
             #CURRENT_DATE      , 
             #CURRENT_TIMESTAMP , 
             
+            QUERYSTRING       ,
+            
             TRUE              , 
             FALSE             , 
         ]
         
         keywords = [k.suppress() for k in keywords]
         
-        any_keyword = MatchFirst(keywords)
+        any_keyword = pp.MatchFirst(keywords)
         
-        quoted_identifier = QuotedString('"', escQuote='""')
+        quoted_identifier = pp.QuotedString('"', escQuote='""')
         
-        identifier = (~any_keyword + Word(alphas + '@', alphanums + "_"))     .setParseAction( pyparsing_common.downcaseTokens) | quoted_identifier
+        identifier = (~any_keyword + pp.Word(pp.alphas + '@', pp.alphanums + "_"))     .setParseAction( pp.pyparsing_common.downcaseTokens) | quoted_identifier
+        
         
         #collation_name = identifier.copy()
 
@@ -495,14 +534,16 @@ class Parser(object):
         
         #database_name  = identifier.copy()
         
-        comment = "--" + restOfLine
+        comment = "--" + pp.restOfLine
         
         # expression
-        expr = Forward().setName("expression")
+        expr = pp.Forward().setName("expression")
         
-        numeric_literal = pyparsing_common.number                           
+        numeric_literal = pp.pyparsing_common.number                           
         
-        string_literal = QuotedString("'", escQuote="''")                   
+        string_literal = pp.QuotedString("'", escQuote="''")         
+        
+        query_string_literal = pp.QuotedString("`", escQuote='\\`')                    
         
         #blob_literal = Regex(r"[xX]'[0-9A-Fa-f]+'")
         
@@ -534,6 +575,13 @@ class Parser(object):
             
             return self.createCall(name, params)
         
+        def _op_query_string(s, loc, toks):
+            #              0            
+            # QUERY_STRING `....`
+            toks = list(toks)
+            query_string = toks[0]
+            return self.createQueryString(query_string)
+
         expr_term = (
             #CAST + LPAR + expr + AS + type_name + RPAR
             #| 
@@ -541,12 +589,14 @@ class Parser(object):
             #| 
             (function_name.setName("function_name")                     .setParseAction( lambda s, loc, toks: self.createIdentifier(toks[0])  )
                  + LPAR 
-                 + Optional(
+                 + pp.Optional(
                      STAR                                               .setParseAction( lambda s, loc, toks: self.createIdentifier(toks[0])  )
-                     | delimitedList(expr) 
+                     | pp.delimitedList(expr) 
                    ).setName('params') 
                  + RPAR
             )                                                           .setParseAction( _op_function  )
+            |
+            (pp.Optional(QUERYSTRING).suppress() + query_string_literal)   .setParseAction( _op_query_string  )
             | 
             literal_value
             #| bind_parameter
@@ -561,17 +611,17 @@ class Parser(object):
             #Group(identifier("col"))                                   .setParseAction( lambda s, loc, toks: ASTIdentifier(toks[0])  )
             
             # <identifier>.<identifier>.<identifier>
-            delimitedList(identifier, delim='.', combine=True)          .setParseAction( lambda s, loc, toks: self.createIdentifier(toks[0])  )
+            pp.delimitedList(identifier, delim='.', combine=True)          .setParseAction( lambda s, loc, toks: self.createIdentifier(toks[0])  )
               
         )
         
-        NOT_NULL    = Group(NOT + NULL)
-        NOT_BETWEEN = Group(NOT + BETWEEN)
-        NOT_IN      = Group(NOT + IN)
-        NOT_LIKE    = Group(NOT + LIKE)
-        NOT_MATCH   = Group(NOT + MATCH)
-        NOT_GLOB    = Group(NOT + GLOB)
-        NOT_REGEXP  = Group(NOT + REGEXP)
+        NOT_NULL    = pp.Group(NOT + NULL)
+        NOT_BETWEEN = pp.Group(NOT + BETWEEN)
+        NOT_IN      = pp.Group(NOT + IN)
+        NOT_LIKE    = pp.Group(NOT + LIKE)
+        NOT_MATCH   = pp.Group(NOT + MATCH)
+        NOT_GLOB    = pp.Group(NOT + GLOB)
+        NOT_REGEXP  = pp.Group(NOT + REGEXP)
         
         UNARY, BINARY, TERNARY = 1, 2, 3
 
@@ -583,7 +633,7 @@ class Parser(object):
             op = toks.pop(0)
             e1 = toks.pop(0)
             
-            expr = self.createASTUnaryExpr(e1, op)
+            expr = self.createASTUnaryExpr(op, e1)
 
             return [ expr ]
             
@@ -615,19 +665,19 @@ class Parser(object):
             return [ expr ]
 
 
-        expr << infixNotation(
+        expr << pp.infixNotation(
             expr_term                                                       
             ,
             [
-                (oneOf("- + ~") | NOT       , UNARY , opAssoc.RIGHT     , _op_handle_unary ),
-                (ISNULL | NOTNULL | NOT_NULL, UNARY , opAssoc.LEFT      , _op_handle_unary ),
-                ("||"                       , BINARY, opAssoc.LEFT      , _op_handle_binary),
-                (oneOf("* / %")             , BINARY, opAssoc.LEFT      , _op_handle_binary),
-                (oneOf("+ -")               , BINARY, opAssoc.LEFT      , _op_handle_binary),
-                (oneOf("<< >> & |")         , BINARY, opAssoc.LEFT      , _op_handle_binary),
-                (oneOf("< <= > >=")         , BINARY, opAssoc.LEFT      , _op_handle_binary),
+                (pp.oneOf("- + ~") | NOT       , UNARY , pp.opAssoc.RIGHT     , _op_handle_unary ),
+                (ISNULL | NOTNULL | NOT_NULL   , UNARY , pp.opAssoc.LEFT      , _op_handle_unary ),
+                ("||"                          , BINARY, pp.opAssoc.LEFT      , _op_handle_binary),
+                (pp.oneOf("* / %")             , BINARY, pp.opAssoc.LEFT      , _op_handle_binary),
+                (pp.oneOf("+ -")               , BINARY, pp.opAssoc.LEFT      , _op_handle_binary),
+                (pp.oneOf("<< >> & |")         , BINARY, pp.opAssoc.LEFT      , _op_handle_binary),
+                (pp.oneOf("< <= > >=")         , BINARY, pp.opAssoc.LEFT      , _op_handle_binary),
                 (
-                    oneOf("= == != <>")
+                    pp.oneOf("= == != <>")
                     | IS
                     | IN
                     | LIKE
@@ -639,19 +689,19 @@ class Parser(object):
                     | NOT_GLOB
                     | NOT_MATCH
                     | NOT_REGEXP,
-                                               BINARY, opAssoc.LEFT     , _op_handle_binary ),
-                ((BETWEEN | NOT_BETWEEN, AND), TERNARY, opAssoc.LEFT    , _op_handle_ternary),       
+                                               BINARY, pp.opAssoc.LEFT     , _op_handle_binary ),
+                ((BETWEEN | NOT_BETWEEN, AND), TERNARY, pp.opAssoc.LEFT    , _op_handle_ternary),       
                 (
                     (IN | NOT_IN) + 
                     LPAR + 
-                    Group(
+                    pp.Group(
                      #select_stmt | 
-                     delimitedList(expr)
+                     pp.delimitedList(expr)
                     ) + 
                     RPAR
-                                            , UNARY, opAssoc.LEFT       , _op_handle_unary ),
-                (AND                        , BINARY, opAssoc.LEFT      , _op_handle_binary),
-                (OR                         , BINARY, opAssoc.LEFT      , _op_handle_binary),
+                                            , UNARY, pp.opAssoc.LEFT       , _op_handle_unary ),
+                (AND                        , BINARY, pp.opAssoc.LEFT      , _op_handle_binary),
+                (OR                         , BINARY, pp.opAssoc.LEFT      , _op_handle_binary),
             ],
         )                                                              
         
@@ -671,10 +721,10 @@ class Parser(object):
 
             return self.createOrderTerm(expr, direction)
             
-        ordering_term = Group(
+        ordering_term = pp.Group(
             (expr("order_key"))
             #+ Optional(COLLATE + collation_name("collate"))
-            + (Optional(ASC | DESC)("direction"))
+            + (pp.Optional(ASC | DESC)("direction"))
         )                                                               .setParseAction( _opt_ordering_term )
         
         #join_constraint = Group(
@@ -697,12 +747,12 @@ class Parser(object):
         
         #join_source = Forward()
         single_source = (
-            Group(
+            pp.Group(
                   #database_name("database") + DOT + table_name("table*") 
                   #| 
                   table_name("table*")
                  ) 
-                 + Optional(Optional(AS) + table_alias("table_alias*"))  
+                 + pp.Optional(pp.Optional(AS) + table_alias("table_alias*"))  
             #     + Optional(INDEXED + BY + index_name("name") | NOT + INDEXED)("index")
             #| 
             #(LPAR + select_stmt + RPAR + Optional(Optional(AS) + table_alias))
@@ -732,7 +782,7 @@ class Parser(object):
             #| 
             (
              (
-              expr("expr") + Optional(Optional(AS) + column_alias("alias") )
+              expr("expr") + pp.Optional(pp.Optional(AS) + column_alias("alias") )
              )             
              .setParseAction( _op_col_alias_callback )
             )
@@ -745,21 +795,20 @@ class Parser(object):
             return self.createASTSelect(col_exprs)
         
         #columns_stmt = Optional(DISTINCT | ALL) + Group(delimitedList(result_column))("columns")
-        columns_stmt = delimitedList(result_column)                     .setParseAction( _op_columns_stmt )
+        columns_stmt = pp.delimitedList(result_column)                     .setParseAction( _op_columns_stmt )
         
         #
         # FROM
         #
         def _op_from_callback(s, loc, toks):
             tables = list(toks.get("from")) 
-            print(__file__, tables)
             return self.createASTFrom( tables )
         
         
         
         #from_stmt  = (FROM + join_source("from*"))                      .setParseAction( _op_from_callback ) 
         
-        from_stmt = (FROM + delimitedList(join_source, delim=',')("from"))          .setParseAction( _op_from_callback ) 
+        from_stmt = (FROM + pp.delimitedList(join_source, delim=',')("from"))          .setParseAction( _op_from_callback ) 
     
         #
         # TOP
@@ -798,7 +847,7 @@ class Parser(object):
         group_stmt = (
             GROUP + BY + 
             #Group(delimitedList(ordering_term))("group_by_terms") 
-            Group(delimitedList(column_name))("group_by_terms") 
+            pp.Group(pp.delimitedList(column_name))("group_by_terms") 
         )                                                               .setParseAction( _op_group_stmt ) 
         
         #
@@ -817,7 +866,7 @@ class Parser(object):
             
         order_stmt = (
             ORDER + BY + 
-            Group( delimitedList(ordering_term) )('ordering_terms')  
+            pp.Group( pp.delimitedList(ordering_term) )('ordering_terms')  
            
         )                                                               .setParseAction( _op_order_stmt ) 
         
@@ -848,18 +897,17 @@ class Parser(object):
             w = toks.get('WHERE'  )
             g = toks.get('GROUP'  )
             h = toks.get('HAVING' )
-           
             return self.createSelectBody(s,f, w, g, h)
     
         select_core = (
             SELECT
             #+ Optional(top_stmt('TOP'))
             + columns_stmt('COLUMNS')         
-            + Optional(from_stmt ('FROM' ))  
-            + Optional(where_stmt('WHERE')) 
-            + Optional(
+            + pp.Optional(from_stmt ('FROM' ))  
+            + pp.Optional(where_stmt('WHERE')) 
+            + pp.Optional(
                   group_stmt('GROUP')
-                + Optional(having_stmt('HAVING'))
+                + pp.Optional(having_stmt('HAVING'))
             )
         )                                                                   .setParseAction( _op_select_core ) 
         
@@ -881,15 +929,15 @@ class Parser(object):
         select_stmt = (
             select_core          ("SELECT_BODY")
             #+ ZeroOrMore(compound_operator + select_core)
-            + (Optional(order_stmt("ORDER")))
-            + (Optional(limit_stmt("LIMIT")))
+            + (pp.Optional(order_stmt("ORDER")))
+            + (pp.Optional(limit_stmt("LIMIT")))
         )                                                                   .setParseAction( _opt_select_stmt ) 
             
         #
         #
         #
-        START = StringStart().suppress()
-        END   = StringEnd().suppress()
+        START = pp.StringStart().suppress()
+        END   = pp.StringEnd().suppress()
         
         query_stm = START + select_stmt + END
         
@@ -897,6 +945,9 @@ class Parser(object):
         
         return query_stm
     
+#----------------------------------------------------------------------#
+#                                                                      #
+#----------------------------------------------------------------------#
 
 if __name__ == "__main__":
 
@@ -908,5 +959,4 @@ if __name__ == "__main__":
 
     r = parser.parse(s)
     
-    print("-" * 80)
     print(r)
