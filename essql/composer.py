@@ -27,7 +27,8 @@ class _ASTIdentifier(ASTIdentifier):
         sym_name = self.value
         sym_name = sym_name.split(".")[0]
         
-        expr_info['used_symbols'].append(sym_name)
+        if sym_name != '*':
+            expr_info['used_symbols'].append(sym_name)
         
         expr_structure = []
         
@@ -105,8 +106,10 @@ class _ASTCall(ASTCall):
         #
         #
         #
-        if fun_name.upper() in ['MAX','MIN','AVG','COUNT']:
+        is_aggr_function = False
+        if fun_name.upper() in ['MAX','MIN','AVG','COUNT','SUM']:
             expr_info['used_aggr_functions'].append(fun_name)
+            is_aggr_function = True
             
         #
         # Create structure
@@ -116,11 +119,16 @@ class _ASTCall(ASTCall):
         _structure.append(fun_name)
         _structure.append('(')
         
-        for i, pe in enumerate(params_exprs):
-            _structure.extend(pe)
-            if i < len(params_exprs) - 1:
-                _structure.append(',')
-
+        if not is_aggr_function:
+            for i, pe in enumerate(params_exprs):
+     
+                _structure.extend(pe)
+                if i < len(params_exprs) - 1:
+                    _structure.append(',')
+        else:
+            col_name = params_exprs[0][0]
+            _structure.append("'%s'" % (col_name))
+            
         _structure.append(')')
         _structure.append(')')
         
@@ -274,7 +282,7 @@ class _ASTGroup(ASTGroup):
 
         dsl_obj = query_plan['dsl']
 
-        fields = [ f_expr.s for f_expr in self.exprs ]
+        fields = [ f_expr.value for f_expr in self.exprs ]
         
         query_plan['aggregation_fields'] = fields
      
@@ -288,26 +296,40 @@ class _ASTGroup(ASTGroup):
 
             aggs_body['aggs'] = {}
 
-            field_aggr_name = field_name #'aggr_%s' % (field_name)
+            if field_name.endswith(".keyword"):
+                aggr_name = field_name.replace(".keyword","")
+            else:
+                aggr_name = field_name 
+            
             field_aggr_body = {
                 "terms": {
-                    "field": field_name
+                    "field": field_name,
+                    "missing": 0.00000000000000001, 
                 },
-                'aggs': {}
             }
             
-            #aggs_body = {}
-            aggs_body['aggs'][field_aggr_name] = field_aggr_body
+            aggs_body['aggs'][aggr_name] = field_aggr_body
             
             aggs_body = field_aggr_body
 
+        #
+        # Aggregation for min,max,avg(<field>)
+        #
         field_name = fields[-1]
-        field_aggr_body = {
-            "stats": { "field": field_name } ,
-        }
         
+        field_aggr_body = {
+            "stats": { 
+                "field": field_name 
+            } ,
+        }
+        counters_name = "stats(%s)" % (field_name)
         aggs_body['aggs'] = {}
-        aggs_body['aggs'][ field_name + '_stats'] = field_aggr_body
+        aggs_body['aggs'][ counters_name ] = field_aggr_body
+
+
+
+
+
 
         dsl_obj.update( root_body )
         

@@ -45,15 +45,31 @@ class Executor(object):
         
         results = json.loads(response.text)
         
-        # FIX: handle errors
+        import pprint
+        pprint.pprint(results)
         
-        results = results['hits']['hits']
-    
+        # FIX: handle errors
+
         #
         # PROCESS RESPONSE
-        #            
+        #   
         
-        results = self.process_result(results, query_descriptor)
+        if 'aggregations' in results:
+            
+            aggregation_fields = query_descriptor['aggregation_fields']
+
+            aggregations = results['aggregations']            
+            
+            results = self._process_aggregation(aggregations, aggregation_fields)
+            
+            results = self.process_result(results, query_descriptor)
+
+            
+        else:
+        
+            hits = results['hits']['hits']
+    
+            results = self.process_result(hits, query_descriptor)
         
         return results
         
@@ -121,9 +137,26 @@ class Executor(object):
         c = {}
         column_expr_contex = self.create_column_expr_contex(c)
         
-        for row in results:
         
-                #print(row)
+        
+        def bind_COUNT(data):
+            def _count_fun(vtype):
+                if vtype == '*': return data['count(*)']
+                return None
+            return _count_fun
+
+        def bind_AGGR(vtype, data):
+            def _aggr_fun(field_name):
+                return data['stats(%s)' % (field_name)][vtype]
+            return _aggr_fun
+        
+        for row in results:
+
+                column_expr_contex['count'] = bind_COUNT(row.get('stats'))
+                column_expr_contex['min'  ] = bind_AGGR('min', row.get('stats'))
+                column_expr_contex['avg'  ] = bind_AGGR('avg', row.get('stats'))
+                column_expr_contex['max'  ] = bind_AGGR('max', row.get('stats'))
+                column_expr_contex['sum'  ] = bind_AGGR('sum', row.get('stats'))
         
                 column_values = []
         
@@ -134,8 +167,12 @@ class Executor(object):
                                 symbols = column_processor['used_symbols']
         
                                 try:
-                                        for sym_name in symbols:                                                
-                                                v = row['_source'][sym_name]
+                                        for sym_name in symbols:            
+                                                
+                                                if '_source' in row:
+                                                    row = row['_source']
+                                                    
+                                                v = row[sym_name]
                                                 
                                                 column_expr_contex[ sym_name ] = v
                                                 
@@ -151,6 +188,56 @@ class Executor(object):
         
         return results2
 
+    def _process_aggregation(self, aggr_data, aggr_fields, level=0, field_values=[], stats=None):
+        
+        stats = stats if stats is not None else {}
+        
+        if level < (len(aggr_fields)):
+    
+            field_name = aggr_fields[level]
+            
+            if field_name.endswith(".keyword"):
+                field_name = field_name.replace(".keyword","")
+                  
+            field_data = aggr_data[field_name]
+                    
+            buckets = field_data['buckets']
+            
+            table = []
+            for b in buckets:
+                field_value = b['key']
+                
+                stats2 = dict(stats)
+                #stats2['count(%s)' % (field_name)] = b['doc_count']
+            
+                #print(field_name, field_value)
+                
+                table += self._process_aggregation(b, aggr_fields, level+1, field_values + [ (field_name, field_value), ] , stats2)
+    
+            return table
+    
+        else:
+            
+            
+            field_name = aggr_fields[-1]
+
+            row = dict( field_values ) 
+
+            stats_name = 'count(*)'
+            v = aggr_data['doc_count']
+            stats[stats_name] = v
+            #
+            # MIN/MAX/AVG stats
+            #            
+            stats_name = 'stats(%s)' % (field_name)
+            v = aggr_data[stats_name]
+            stats[stats_name] = v
+            
+            #print(__file__, stats)
+            
+            row['stats'] = stats
+            
+            return [ row ]
 
 #----------------------------------------------------------------------#
 #                                                                      #
@@ -188,43 +275,7 @@ class Executor(object):
 '''
 
 
-def _process_aggregations(result):
 
-    aggregation_fields = query_descriptor['aggregation_fields']
-    
-    aggregations = results['aggregations']
-    
-    def _f(aggr_data, aggr_fields, level=0, field_values=[]):
-    
-        if level < (len(aggr_fields)):
-    
-            field_name = aggr_fields[level]
-                
-            field_data = aggr_data[field_name]
-                    
-            buckets = field_data['buckets']
-            
-            table = []
-            for b in buckets:
-                field_value = b['key']
-            
-                #print(field_name, field_value)
-                
-                table += _f(b, aggr_fields, level+1, field_values + [ (field_name, field_value), ] )
-    
-            return table
-    
-        else:
-            #field_name = aggr_fields[-1]
-            
-            #stats = aggr_data[ field_name ]
-            
-            #row = dict( field_values + [ ( field_name + '_' + k, v) for k,v in stats.items() ] )
-            
-            count = aggr_data['doc_count']
-            
-            row = dict( field_values + [ ('_count', count) ] )
-            
-            return [ row ]
 
-    ret = _f(aggregations, aggregation_fields)
+
+    

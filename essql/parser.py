@@ -543,13 +543,18 @@ class Parser(object):
         
         string_literal = pp.QuotedString("'", escQuote="''")         
         
-        query_string_literal = pp.QuotedString("`", escQuote='\\`')                    
+        query_string_literal = pp.QuotedString("`", escQuote='\\`')           
+        
+        dotted_identifier = pp.delimitedList(identifier, delim='.', combine=True)          .setParseAction( lambda s, loc, toks: self.createIdentifier(toks[0])  )         
         
         #blob_literal = Regex(r"[xX]'[0-9A-Fa-f]+'")
         
         literal_value = (
               numeric_literal                                           .setParseAction( lambda s, loc, toks: self.createNumericLiteral(toks[0])  )                                      
             | string_literal                                            .setParseAction( lambda s, loc, toks: self.createStringLiteral(toks[0])   )
+            
+            #| dotted_identifier
+            
         #    | blob_literal                                             
             | TRUE                                                      .setParseAction( lambda s, loc, toks: self.createBoolLiteral(True)  )
             | FALSE                                                     .setParseAction( lambda s, loc, toks: self.createBoolLiteral(False) )
@@ -590,7 +595,7 @@ class Parser(object):
             (function_name.setName("function_name")                     .setParseAction( lambda s, loc, toks: self.createIdentifier(toks[0])  )
                  + LPAR 
                  + pp.Optional(
-                     STAR                                               .setParseAction( lambda s, loc, toks: self.createIdentifier(toks[0])  )
+                     STAR                                               .setParseAction( lambda s, loc, toks: self.createIdentifier("*")  )
                      | pp.delimitedList(expr) 
                    ).setName('params') 
                  + RPAR
@@ -610,8 +615,10 @@ class Parser(object):
             #| 
             #Group(identifier("col"))                                   .setParseAction( lambda s, loc, toks: ASTIdentifier(toks[0])  )
             
+            #
             # <identifier>.<identifier>.<identifier>
-            pp.delimitedList(identifier, delim='.', combine=True)          .setParseAction( lambda s, loc, toks: self.createIdentifier(toks[0])  )
+            #
+            dotted_identifier
               
         )
         
@@ -847,7 +854,7 @@ class Parser(object):
         group_stmt = (
             GROUP + BY + 
             #Group(delimitedList(ordering_term))("group_by_terms") 
-            pp.Group(pp.delimitedList(column_name))("group_by_terms") 
+            pp.Group(pp.delimitedList(dotted_identifier))("group_by_terms") 
         )                                                               .setParseAction( _op_group_stmt ) 
         
         #
