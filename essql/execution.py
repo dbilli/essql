@@ -85,33 +85,20 @@ class Executor(object):
     
             context = {
             }
+
             for symbol in dir(__builtins__):
                     context[ symbol ] = None
-            context['abs'   ] = abs
-            context['divmod'] = divmod
+
             context['int'   ] = int
-            context['pow'   ] = pow
             context['float' ] = float
-            #context['long'  ] = long
+
             context['max'   ] = max
             context['min'   ] = min
-            context['fun1'  ] = lambda n: n * 1.5
-            #context['ceil'  ] = math.ceil
-            
-            #context['log'   ] = math.log
-            #context['sqrt'  ] = math.sqrt
-            
-            #context['sin'   ] = math.sin
-            #context['cos'   ] = math.cos
-            #context['radians'] = math.radians
-            
-            #context['iftrue'] = _fun_iftrue
-            #context['ifnull'] = _fun_ifnull
-            
-            #context['NONE'  ] = SafeNoneType()
-            #context['None'  ] = SafeNoneType()
-            
-            #context['sma'  ]  = _fun_sma
+            context['abs'   ] = abs
+            context['pow'   ] = pow
+
+            context['str'  ] = str
+
             if symbols is not None:
                     context.update(symbols)
             
@@ -125,8 +112,9 @@ class Executor(object):
         
         # STEP 1: compile expressions
         for column_processor in query_descriptor['columns_processors']:
-                expr_string = column_processor['expr_string']
-                #print(expr_string)
+
+                expr_string = column_processor['expr_python']
+
                 column_processor['compiled_expr'] = self.compile_expr( expr_string  )
                 
                 headers.append( column_processor['alias'] )
@@ -147,7 +135,9 @@ class Executor(object):
 
         def bind_AGGR(vtype, data):
             def _aggr_fun(field_name):
-                return data['stats(%s)' % (field_name)][vtype]
+                k_stats = '%s(%s)' % (vtype,field_name)
+                return data[k_stats]['value'] 
+                 
             return _aggr_fun
         
         for row in results:
@@ -171,10 +161,11 @@ class Executor(object):
                                                 
                                                 if '_source' in row:
                                                     row = row['_source']
-                                                    
-                                                v = row[sym_name]
                                                 
-                                                column_expr_contex[ sym_name ] = v
+                                                if sym_name in row:  
+                                                    v = row[sym_name]
+                                                
+                                                    column_expr_contex[ sym_name ] = v
                                                 
                                         computed_val = self.evaluate_expr(column_expr_contex, compiled_expr)
         
@@ -208,17 +199,12 @@ class Executor(object):
                 field_value = b['key']
                 
                 stats2 = dict(stats)
-                #stats2['count(%s)' % (field_name)] = b['doc_count']
-            
-                #print(field_name, field_value)
-                
+
                 table += self._process_aggregation(b, aggr_fields, level+1, field_values + [ (field_name, field_value), ] , stats2)
     
             return table
     
         else:
-            
-            
             field_name = aggr_fields[-1]
 
             row = dict( field_values ) 
@@ -226,14 +212,11 @@ class Executor(object):
             stats_name = 'count(*)'
             v = aggr_data['doc_count']
             stats[stats_name] = v
-            #
-            # MIN/MAX/AVG stats
-            #            
-            stats_name = 'stats(%s)' % (field_name)
-            v = aggr_data[stats_name]
-            stats[stats_name] = v
             
-            #print(__file__, stats)
+            
+            keys = set(aggr_data.keys()) - set(['doc_coount', 'key'])
+            for k in keys:
+                stats[k] = aggr_data[k]
             
             row['stats'] = stats
             

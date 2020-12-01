@@ -184,15 +184,16 @@ class ASTGroup(AST):
         self.exprs  = exprs
         
     def toString(self):
-            return 'Group(%s)' % ( ','.join([ e.toString() for e in self.exprs ]) )
+        return 'Group(%s)' % ( ','.join([ e.toString() for e in self.exprs ]) )
 
 class ASTHaving(AST):
 
-    def __init__(self, expr):
-        self.expr  = expr
+    def __init__(self, exprs):
+        self.exprs  = exprs
         
     def toString(self):
-        return 'Having(%s)' % (self.expr.toString())
+        return 'Having(%s)' % ( ','.join([ e.toString() for e in self.exprs ]) )
+        #return 'Having(%s)' % (self.expr.toString())
 
 #----------------------------------------------------------------------#
 # SELECT BODY                                                          #
@@ -343,13 +344,15 @@ class Parser(object):
     def createASTOrder(self, expr_list):
         return ASTOrder(expr_list)
 
-    # GROUP HAVING
+    # GROUP
     
     def createASTGroup(self, expr_list):
         return ASTGroup(expr_list)
-        
-    def createASTHaving(self, expr ):
-        return ASTHaving( expr )
+    
+    # HAVING
+    
+    def createASTHaving(self, expr_list ):
+        return ASTHaving( expr_list )
     
     # LIMIT
     
@@ -847,10 +850,7 @@ class Parser(object):
             expr_list = list(toks['group_by_terms'])
             return self.createASTGroup(expr_list)
 
-        def _op_having_stmt(s, loc, toks):
-            expr = toks['having_expr']
-            return self.createASTHaving( expr )
-            
+
         group_stmt = (
             GROUP + BY + 
             #Group(delimitedList(ordering_term))("group_by_terms") 
@@ -859,9 +859,17 @@ class Parser(object):
         
         #
         # HAVING
-        #        
+        #       
+        
+        def _op_having_stmt(s, loc, toks):
+            #expr = toks['having_expr']
+            #return self.createASTHaving( expr )
+            expr_list = list(toks['having_terms'])
+            return self.createASTHaving(expr_list)    
+               
         having_stmt = (
-            HAVING + expr("having_expr")
+            HAVING + 
+            pp.Group(pp.delimitedList(expr))("having_terms") 
         )                                                               .setParseAction( _op_having_stmt ) 
         
         #

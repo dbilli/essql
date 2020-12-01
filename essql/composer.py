@@ -5,20 +5,35 @@ from .parser import *
 # Literals                                                             #
 #----------------------------------------------------------------------#
 
+def EXPR_INFO_DATA():
+
+    return  {
+        'used_symbols'       : [],
+        'used_aggr_functions': [],
+        'expr'               : None,
+        'expr_python'        : None,
+        #'expr_literal'       : None,
+        'alias'              : None,
+    }
+
 class _ASTNumericLiteral(ASTNumericLiteral):
 
     def composeExpr(self, expr_info):
-        expr_info['expr'] = [ repr(self.value) ]
+        expr_info['expr'       ] = [ str(self.value)  ]        
+        expr_info['expr_python'] = [ repr(self.value) ]
+        
 
 class _ASTStringLiteral(ASTStringLiteral):
 
     def composeExpr(self, expr_info):
-        expr_info['expr'] = [ repr(self.value) ]
+        expr_info['expr'       ] = [ str(self.value)  ]        
+        expr_info['expr_python'] = [ repr(self.value) ]
 
 class _ASTBoolLiteral(ASTBoolLiteral):
 
     def composeExpr(self, expr_info):
-        expr_info['expr'] = [ repr(self.value) ]
+        expr_info['expr'       ] = [ str(self.value)  ]        
+        expr_info['expr_python'] = [ repr(self.value) ]
     
 class _ASTIdentifier(ASTIdentifier):
 
@@ -30,15 +45,24 @@ class _ASTIdentifier(ASTIdentifier):
         if sym_name != '*':
             expr_info['used_symbols'].append(sym_name)
         
-        expr_structure = []
+        expr        = []
+        expr_python = []
         
         for i, key in enumerate(self.value.split('.')):
+            
+            
+            
             if i == 0:
-                expr_structure.append(key)
+                expr.append(key)
+                expr_python.append(key)
             else:
-                expr_structure.append( "['%s']" % (key) )
+                expr       .append( '.%s'    % (key) )
+                expr_python.append( "['%s']" % (key) )
         
-        expr_info['expr'] = expr_structure
+        print(__file__, '_ASTIdentifier', expr, expr_python)
+        
+        expr_info['expr'       ] = expr
+        expr_info['expr_python'] = expr_python
 
 #----------------------------------------------------------------------#
 # Expressions                                                          #
@@ -49,38 +73,27 @@ class _ASTUnaryExpr(ASTUnaryExpr):
     def composeExpr(self, expr_info):
         self.expr1.composeExpr(expr_info)
 
-        #
-        # Create structure
-        #
-        _structure = []
-        _structure.append('(')
-        _structure.append(self.op)
-        _structure.extend( expr_info['expr'])
-        _structure.append(')')
-        
-        expr_info['expr'] = _structure
+        expr_info['expr'       ] = ['(', self.op, expr_info['expr'       ], ')' ]
+        expr_info['expr_python'] = ['(', self.op, expr_info['expr_python'], ')' ]
 
 class _ASTBinaryExpr(ASTBinaryExpr):
 
     def composeExpr(self, expr_info):
 
         self.expr1.composeExpr(expr_info)        
-        s1 = expr_info['expr']
+        expr1         = expr_info['expr']
+        expr_python1  = expr_info['expr_python']
         
         self.expr2.composeExpr(expr_info)
-        s2 = expr_info['expr']
+        expr2         = expr_info['expr']
+        expr_python2  = expr_info['expr_python']
 
         #
         # Create structure
         #
-        _structure = []
-        _structure.append('(')
-        _structure.extend( s1 )
-        _structure.append(self.op)
-        _structure.extend( s2 )
-        _structure.append(')')
-        
-        expr_info['expr'] = _structure
+
+        expr_info['expr'       ] = ['(', ] + expr1        + [ self.op ] + expr2        + [ ')' ]
+        expr_info['expr_python'] = ['(', ] + expr_python1 + [ self.op ] + expr_python2 + [ ')' ]
 
 class _ASTTernaryExpr(ASTTernaryExpr):
 
@@ -94,45 +107,63 @@ class _ASTCall(ASTCall):
     def composeExpr(self, expr_info):
 
         fun_name = self.identifier.value
+        
+        is_aggr_function = fun_name.upper() in ['MAX','MIN','AVG','COUNT','SUM']
+        
+        #
+        #
+        #
         params_exprs = []
 
         for param_expr in self.params:
             
-            expr_info['expr'] = None
+            # Analyze expression   
+            expr_info['expr'       ] = None
+            expr_info['expr_python'] = None
             param_expr.composeExpr(expr_info)
+        
+            params_exprs.append( (expr_info['expr'], expr_info['expr_python']) )
             
-            params_exprs.append( expr_info['expr'] )
+            # Get informations about aggregation function used
+            if is_aggr_function:
+                column_name = expr_info['expr'][0]
+                expr_string = '%s(%s)' % (fun_name, column_name)
+                
+                expr_info['used_aggr_functions'].append( (fun_name, expr_string, column_name)  )
 
-        #
-        #
-        #
-        is_aggr_function = False
-        if fun_name.upper() in ['MAX','MIN','AVG','COUNT','SUM']:
-            expr_info['used_aggr_functions'].append(fun_name)
-            is_aggr_function = True
-            
         #
         # Create structure
         #
-        _structure = []
-        _structure.append('(')
-        _structure.append(fun_name)
-        _structure.append('(')
+        expr        = [ '(', fun_name, '(' ]
+        expr_python = [ '(', fun_name, '(' ]
+         
+        print(__file__, "XXXX", params_exprs)
         
         if not is_aggr_function:
             for i, pe in enumerate(params_exprs):
+                
+                e  = pe[0]
+                pe = pe[1]
      
-                _structure.extend(pe)
+                expr       .extend(e)
+                expr_python.extend(pe)
+                
                 if i < len(params_exprs) - 1:
-                    _structure.append(',')
+                    expr       .append(',')
+                    expr_python.append(',')
         else:
-            col_name = params_exprs[0][0]
-            _structure.append("'%s'" % (col_name))
+            col_expr, col_expr_python = params_exprs[0]
             
-        _structure.append(')')
-        _structure.append(')')
+            print(__file__, "Y", col_expr, col_expr_python)
+            
+            expr       .append( "%s"   % (col_expr[0]       ) )
+            expr_python.append( "'%s'" % (col_expr_python[0]) )
+            
+        expr        += [ ')', ')' ]
+        expr_python += [ ')', ')' ]
         
-        expr_info['expr'] = _structure
+        expr_info['expr'       ] = expr
+        expr_info['expr_python'] = expr_python
 
 
 class _ASTQueryString(ASTQueryString):
@@ -154,21 +185,18 @@ class _ASTQueryString(ASTQueryString):
 # SELECT ...                                                           #
 #----------------------------------------------------------------------#
 
+
+
 class _ASTSelectColumn(ASTSelectColumn):
     
     def composeQuery(self, query_plan):
         
 
-        expr_info = {
-            'used_symbols'        : [],
-            'used_aggr_functions' : [],
-            'expr': None,
-            'expr_string': None,
-            'alias': None,
-        }
+        expr_info = EXPR_INFO_DATA()
         
         self.expr.composeExpr(expr_info)
         
+        print(expr_info)
         #
         # Alias
         #
@@ -186,9 +214,9 @@ class _ASTSelectColumn(ASTSelectColumn):
         #
         # col expression
         #
-        python_expr_string = ''.join(  expr_info['expr'] )
-        
-        expr_info['expr_string'] = python_expr_string
+        expr_info['expr'        ] = ''.join(  expr_info['expr'] )
+        expr_info['expr_python' ] = ''.join(  expr_info['expr_python'] )
+        #expr_info['expr_literal'] = ''.join(  expr_info['expr_literal'] )
         
         
         query_plan['columns_processors'].append(expr_info)
@@ -312,9 +340,12 @@ class _ASTGroup(ASTGroup):
             
             aggs_body = field_aggr_body
 
+        aggs_body['aggs'] = {}
+        
         #
         # Aggregation for min,max,avg(<field>)
         #
+
         field_name = fields[-1]
         
         field_aggr_body = {
@@ -323,12 +354,74 @@ class _ASTGroup(ASTGroup):
             } ,
         }
         counters_name = "stats(%s)" % (field_name)
-        aggs_body['aggs'] = {}
         aggs_body['aggs'][ counters_name ] = field_aggr_body
 
 
+        
+        for col_info in query_plan['columns_processors']:
+            
+            for fun_name, expr_str, col_name,  in col_info['used_aggr_functions']:
+
+                field_aggr_body = {}
+                field_aggr_body[ fun_name ] =  { 
+                    "field": col_name 
+                }
+                exprid = expr_str #"stats(%s)" % (field_name)
+                aggs_body['aggs'][ exprid ] = field_aggr_body
+  
+  
+  
+                    #b_filter = {}
+                    #
+                    #script_expr = having_expr.replace( expr_str, 'params.val')
+                    #
+                    #b_filter = {
+                    #    "bucket_selector": {
+                    #        "buckets_path": {
+                    #            "val": exprid
+                    #        },
+                    #        "script": script_expr
+                    #    }
+                    #}
+                    #
+                    #aggs_body['aggs'][ "%s_filter" % (expr_str) ] = b_filter
 
 
+   
+        if 'having_conditions' in query_plan:
+
+
+            for having_condition in query_plan['having_conditions']:
+                print( having_condition )
+                
+                having_expr = having_condition['expr']
+                
+                for fun_name, expr_str, col_name,  in having_condition['used_aggr_functions']:
+
+                    field_aggr_body = {}
+                    field_aggr_body[ fun_name ] =  { 
+                        "field": col_name 
+                    }
+                    exprid = expr_str #"stats(%s)" % (field_name)
+                    aggs_body['aggs'][ exprid ] = field_aggr_body
+  
+  
+  
+                    b_filter = {}
+                    
+                    script_expr = having_expr.replace( expr_str, 'params.val')
+                    
+                    b_filter = {
+                        "bucket_selector": {
+                            "buckets_path": {
+                                "val": exprid
+                            },
+                            "script": script_expr
+                        }
+                    }
+                    
+                    aggs_body['aggs'][ "%s_filter" % (expr_str) ] = b_filter
+                    
 
 
         dsl_obj.update( root_body )
@@ -337,7 +430,27 @@ class _ASTGroup(ASTGroup):
 
 
 class _ASTHaving(ASTHaving):
-    pass
+
+    def composeQuery(self, query_plan):
+
+        having_conditions = []
+
+        
+        
+        for having_expr in self.exprs:
+            
+            expr_info = EXPR_INFO_DATA()
+            
+            print(__file__, "Z", expr_info)
+            
+            having_expr.composeExpr(expr_info)
+
+            expr_info['expr']        = ''.join(  expr_info['expr'] )
+            expr_info['expr_python'] = ''.join(  expr_info['expr_python'] )
+           
+            having_conditions.append( expr_info )
+        
+        query_plan['having_conditions'] = having_conditions
 
 #----------------------------------------------------------------------#
 # LIMIT                                                                #
@@ -368,19 +481,21 @@ class _ASTSelectBody(ASTSelectBody):
 
     def composeQuery(self, query_plan):
 
+        self.select .composeQuery(query_plan)
+
         if self.frm:
             self.frm    .composeQuery(query_plan)
         
         if self.where:
             self.where  .composeQuery(query_plan)
 
-        if self.group:
-            self.group  .composeQuery(query_plan)
-    
         if self.having:
             self.having .composeQuery(query_plan)
 
-        self.select .composeQuery(query_plan)
+        if self.group:
+            self.group  .composeQuery(query_plan)
+    
+
 
         return
 
@@ -513,6 +628,8 @@ if __name__ == "__main__":
     
     import sys
     import pprint
+    
+    print(sys.argv)
     
     s = sys.argv[1]
     
