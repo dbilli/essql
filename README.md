@@ -20,16 +20,19 @@ ESSQL can perform queries against Elasticsearch indices and return results in ta
 
 ```
 SELECT
-       x                     AS Xz,
-       fun1(z)               AS Z,
-       int(log.level.descr)  AS log1
+       fun1(x)               AS fun_x,
+       y,
+       sum(x)                AS SUM
   FROM
        "test-index"
  WHERE
        QUERYSTRING `  x:>1000  AND  log.level.descr:3  `
+GROUP BY
+       x,y
+HAVING 
+       SUM(z) > 100
 ORDER BY
-       z DESC,
-       x ASC
+       x, y DESC
 
 LIMIT 10000
 ```
